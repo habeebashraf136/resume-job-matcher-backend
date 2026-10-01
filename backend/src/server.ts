@@ -4,8 +4,6 @@ import connectDB from './config/database.ts';
 import { initPinecone } from './config/pinecone.ts';
 
 
-
-
 const PORT = process.env.PORT || 4000;
 
 

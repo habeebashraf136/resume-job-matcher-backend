@@ -4,7 +4,7 @@ export const parseResume = async (state: any) => {
     if(!state?.filePath){
         throw new Error('File path is required.');
     }
-
+    
     try{
         const rawText = await extractTextFromPDF(state.filePath);
         return { rawText };

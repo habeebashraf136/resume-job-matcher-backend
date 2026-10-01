@@ -3,8 +3,8 @@ dotenv.config();
 import logger from '../utils/logger.ts';
 
 
-if(!process.env.MONGODB_URI){
-    const err = new Error('MONGO_URI is not defined in environment variables');
+if(!process.env.DATABASE_URL){
+    const err = new Error('DATABASE_URL is not defined in environment variables');
     logger.error(err);
     process.exit(1);
 }
@@ -78,7 +78,7 @@ if(!process.env.GROQ_API_KEY){
 
 
 const config = {
-    MONGODB_URI: process.env.MONGODB_URI,
+    DATABASE_URL: process.env.DATABASE_URL,
     REDIS_HOST: process.env.REDIS_HOST,
     REDIS_PORT: process.env.REDIS_PORT,
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,

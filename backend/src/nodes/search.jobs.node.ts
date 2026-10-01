@@ -1,19 +1,12 @@
 import { jobApiService } from '../services/job.api.service.ts';
 import logger from '../utils/logger.ts';
+import type { z } from 'zod';
+import { resumeProfileSchema } from './extract.profile.node.ts'; // adjust path to match your actual file location
+
+type ResumeProfile = z.infer<typeof resumeProfileSchema>;
 
 type SearchJobsState = {
-    resumeProfile: {
-        targetRole: string;
-        yearsOfExperience?: number;
-        preferredLocation?: string;
-        experience?: {
-            jobTitle: string;
-            company: string;
-            duration?: string;
-            description?: string;
-        }[];
-        skills: string[];
-    };
+    resumeProfile: ResumeProfile;
 };
 
 const JOBS_LIMIT = 15;
@@ -44,7 +37,6 @@ export const searchJobs = async (state: SearchJobsState) => {
         return { jobListings: jobs ?? [] };
 
     } catch (error: any) {
-        // throw instead of silent return — pipeline must fail loudly
         logger.error('searchJobsNode: Error searching jobs:', {
             message: error.message,
             status: error.response?.status,

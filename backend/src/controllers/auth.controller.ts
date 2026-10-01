@@ -1,11 +1,12 @@
-import userModel from '../models/auth.model.ts';
 import type { Request, Response } from "express";
 import asyncHandler from '../utils/asyncHandler.ts';
 import jwt from 'jsonwebtoken';
 import config from '../config/config.ts';
 import redis from '../config/redis.ts';
 import type { AccessTokenPayload } from '../types/auth.types.ts';
-
+import { pool } from '../config/database.ts';
+import bcrypt from 'bcryptjs';
+ 
 
 
 const generateAccessToken = (userid: any) => {
@@ -33,26 +34,31 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
         });
     }
 
-    const userExists = await userModel.findOne({
-        $or:[{username},{email}],
-    });
+    const userExists = await pool.query(
+        'select * from users where email = $1 or username = $2',
+        [email,username]
+    );
 
-    if(userExists){
+    if(userExists.rows.length > 0){
         return res.status(400).json({
             message:'User already exists'
         });
     }
 
-    const user = await userModel.create({
-        username,
-        email,
-        password,
-    });
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    const refreshToken = generateRefreshToken(user._id);
-    const accessToken = generateAccessToken(user._id);
 
-    await redis.set(`refresh:${user._id}`, refreshToken, 'EX', 2592000)
+    const result = await pool.query(
+        'insert into users (username,email,password_hash) values ($1,$2,$3) returning id,username,email,created_at',
+        [username,email,hashedPassword]
+    );
+
+    const user = result.rows[0];
+
+    const refreshToken = generateRefreshToken(user.id);
+    const accessToken = generateAccessToken(user.id);
+
+    await redis.set(`refresh:${user.id}`, refreshToken, 'EX', 2592000)
     
     res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
@@ -65,9 +71,9 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
         success: true,
         message: 'User created successfully',
         user:{
-            useid: user._id,
+            id: user.id,
             username: user.username,
-            email: user.email,
+            email: user.email
         },
         accessToken,
     })
@@ -76,15 +82,27 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
 export const loginController = asyncHandler(async (req: Request, res: Response) =>{
     const { email, password } = req.body;
 
-    const user = await userModel.findOne({email}).select('+password');
+    if(!email || !password) {
+        return res.status(400).json({
+             message:'Please provide email, and password'
+        })
+    }
 
-    if(!user){
+    const userExist = await pool.query(
+        'select * from users where email = $1',
+        [email]
+    )
+
+
+    if(userExist.rows.length === 0){
         return res.status(400).json({
             message:'User does not exist'
         });
     }
 
-    const isMatch = await user.comparePassword(password);
+    const user = userExist.rows[0]; 
+
+    const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if(!isMatch){
         return res.status(400).json({
@@ -92,10 +110,10 @@ export const loginController = asyncHandler(async (req: Request, res: Response) 
         });
     }
 
-    const refreshToken = generateRefreshToken(user._id);
-    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user.id);
+    const accessToken = generateAccessToken(user.id);
 
-    await redis.set(`refresh:${user._id}`, refreshToken, 'EX', 2592000);
+    await redis.set(`refresh:${user.id}`, refreshToken, 'EX', 2592000);
 
     res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
@@ -104,12 +122,11 @@ export const loginController = asyncHandler(async (req: Request, res: Response) 
         maxAge: 30 * 24 * 60 * 60 * 1000,
     })
 
-
     return res.status(200).json({
         success: true,
         message: 'User logged in successfully',
         user:{
-            useid: user._id,
+            userid: user.id,
             username: user.username,
             email: user.email,
         },
@@ -155,7 +172,12 @@ export const getUserInfo = asyncHandler(async (req: Request, res: Response) => {
         });
     }
 
-    const user = await userModel.findById(userid).select('-password');
+    const result = await pool.query(
+        'select id,username,email from users where id = $1',
+        [userid]
+    );
+
+    const user = result.rows[0];
 
     if(!user){
         return res.status(400).json({
@@ -167,7 +189,7 @@ export const getUserInfo = asyncHandler(async (req: Request, res: Response) => {
         success: true,
         message: 'User info retrieved successfully',
         user:{
-            useid: user._id,
+            userid: user.id,
             username: user.username,
             email: user.email,
         }
@@ -196,7 +218,7 @@ export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
             const remainingTime = (decodedAccess?.exp || 0) - Math.floor(Date.now() / 1000);
 
             if(remainingTime > 0){
-                    await redis.set(`blacklist:${accessToken}`, 'true', 'EX', remainingTime);
+                await redis.set(`blacklist:${accessToken}`, 'true', 'EX', remainingTime);
             }
         }
     } catch (err) {

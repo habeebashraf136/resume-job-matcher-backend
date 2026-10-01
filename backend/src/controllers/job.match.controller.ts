@@ -1,7 +1,7 @@
 import asyncHandler from "../utils/asyncHandler.ts";
 import type { Request, Response } from "express";
 import { jobMatchGraph } from '../graph/job.match.graph.ts';
-import JobSearch from '../models/job.search.model.ts';
+import { pool } from '../config/database.ts';
 
 
 export const findJobs = asyncHandler(async (req: Request, res: Response) => {
@@ -53,11 +53,21 @@ export const getJobSearchHistory = asyncHandler(async (req:Request, res:Response
         });
      }
 
-     const result = await JobSearch.find({userid}).sort({createdAt: -1});
+     const result = await pool.query(`
+        select
+        js.id as job_search_id,
+        js.created_at,
+        js.resume_profile->>'targetRole' as target_role,
+        rj.title, rj.company,rj.location,rj.score,rj.match_reason,rj.url
+        from job_searches js
+        join ranked_jobs rj ON rj.job_search_id =js.id
+        where js.userid = $1
+        order by js.created_at DESC, rj.score DESC;`,
+     [userid]);
 
      return res.status(200).json({
         success: true,
         message: 'Job search history retrieved successfully',
-        data: result
+        data: result.rows
      })
 })

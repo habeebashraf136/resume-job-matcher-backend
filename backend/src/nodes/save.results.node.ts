@@ -1,4 +1,5 @@
-import JobSearch from '../models/job.search.model.ts';
+import { pool }  from '../config/database.ts';
+import logger from '../utils/logger.ts';
 
 type RankedJob = {
     jobId: string;
@@ -25,40 +26,66 @@ export const saveResultsNode = async (state: SaveResultsState) => {
     }
 
     if (!state?.rankedJobs?.length) {
-        return {
-            ...state,                    // Keep existing state
-            jobListings: [],             // Empty list
-            message: "No jobs to save",    // Or better message
-            success: false,              // Optional
-            error: null,                 // Optional
-        };
+        logger.warn('saveResultsNode: no ranked jobs to save');
+        return { success: false, jobSearchId: null, rankedJobs: [] };
     }
 
+    const client = await pool.connect();
+
     try {
-        const jobSearch = new JobSearch({
-            userid: state.userId,
-            resumeProfile: state.resumeProfile || {},
-            rankedJobs: state.rankedJobs.map(job => ({
-                jobid: job.jobId,
-                title: job.title,
-                company: job.company,
-                location: job.location,
-                score: job.score,
-                matchReason: job.matchReason,
-                url: job.url,
-                jobType: job.jobType
-            }))
+        await client.query('BEGIN')
+
+        const jobSearchResult = await client.query(
+            `insert into job_searches (userid,resume_profile) 
+            values ($1,$2)
+            returning id`,
+            [state.userId, JSON.stringify(state.resumeProfile || {})]
+        );
+
+        const jobSearchId = jobSearchResult.rows[0].id;
+
+        const values: any[] = [];
+        const placeholders: string[] = [];
+
+        state.rankedJobs.forEach((job,i)=> {
+            const offset = i * 10;
+            placeholders.push(
+                `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`
+            )
+            values.push(
+                jobSearchId,
+                job.jobId,
+                job.title,
+                job.company,
+                job.location,
+                job.score,
+                job.matchReason,
+                job.url,
+                job.salary ?? null,
+                job.jobType
+            )
         });
 
-        await jobSearch.save();
+        await client.query(
+            `INSERT INTO ranked_jobs
+                (job_search_id, jobid, title, company, location, score, match_reason, url, salary, job_type)
+             VALUES ${placeholders.join(', ')}`,
+            values
+        );
+
+        await client.query('COMMIT');
 
         return {
             success: true,
-            jobSearchId: jobSearch._id.toString(),
+            jobSearchId,
             rankedJobs: state.rankedJobs
         };
-
+        
     } catch (error: any) {
+        await client.query('ROLLBACK');
+        logger.error('saveResultsNode: failed to save results', { message: error.message, userId: state.userId });
         throw new Error(`Failed to save results: ${error.message}`);
+    } finally {
+        client.release();
     }
 };

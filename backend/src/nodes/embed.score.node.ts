@@ -1,13 +1,10 @@
 import { embeddingService } from '../services/embedding.service.ts';
 import { pineconeService } from '../services/pinecone.service.ts';
 import logger from '../utils/logger.ts';
+import type { z } from 'zod';
+import { resumeProfileSchema } from './extract.profile.node.ts'; // adjust path if needed
 
-type Experience = {
-    jobTitle: string;
-    company: string;
-    duration?: string;
-    description?: string;
-};
+type ResumeProfile = z.infer<typeof resumeProfileSchema>;
 
 type JobListing = {
     jobId: string;
@@ -21,15 +18,11 @@ type JobListing = {
     postedAt?: string;
 };
 
+type ScoredJob = JobListing & { similarityScore: number };
+
 type EmbedScoreState = {
     userId: string;
-    resumeProfile: {
-        targetRole: string;
-        skills: string[];
-        summary?: string;
-        preferredLocation?: string;
-        experience?: Experience[];
-    };
+    resumeProfile: ResumeProfile;
     jobListings: JobListing[] | null;
 };
 
@@ -44,15 +37,7 @@ export const embedScoreNode = async (state: EmbedScoreState) => {
 
     if (!state?.jobListings?.length) {
         logger.warn('No jobs found for this search query');
-    
-        // Return gracefully instead of throwing error
-        return {
-            ...state,                    // Keep existing state
-            jobListings: [],             // Empty list
-            message: "No jobs found",    // Or better message
-            success: false,              // Optional
-            error: null
-        };
+        return { scoredJobs: [] };
     }
 
     const profileText = [
@@ -71,7 +56,6 @@ export const embedScoreNode = async (state: EmbedScoreState) => {
             throw new Error('Mistral returned empty embedding');
         }
 
-        
         await pineconeService.upsertResume(
             state.userId,
             resumeEmbedding,
@@ -87,9 +71,8 @@ export const embedScoreNode = async (state: EmbedScoreState) => {
             }
         );
 
-
-        const scoredJobs = await Promise.all(
-            state.jobListings.map(async (job) => {
+        const results = await Promise.allSettled(
+            state.jobListings.map(async (job): Promise<ScoredJob> => {
                 const jobText = [
                     job.title,
                     job.company,
@@ -99,15 +82,11 @@ export const embedScoreNode = async (state: EmbedScoreState) => {
 
                 const jobEmbedding = await embeddingService.getEmbedding(jobText);
 
-
                 if (!jobEmbedding?.length) {
-                    throw new Error(`Empty embedding returned for job: ${job.title}`);
+                    throw new Error(`Empty embedding for job: ${job.title}`);
                 }
 
-                const similarity = calculateCosineSimilarity(
-                    resumeEmbedding,
-                    jobEmbedding
-                );
+                const similarity = calculateCosineSimilarity(resumeEmbedding, jobEmbedding);
 
                 return {
                     ...job,
@@ -115,6 +94,15 @@ export const embedScoreNode = async (state: EmbedScoreState) => {
                 };
             })
         );
+
+        const scoredJobs = results
+            .filter((r): r is PromiseFulfilledResult<ScoredJob> => r.status === 'fulfilled')
+            .map(r => r.value);
+
+        const failedCount = results.length - scoredJobs.length;
+        if (failedCount > 0) {
+            logger.warn(`${failedCount} job(s) failed to embed and were skipped`);
+        }
 
         const sorted = scoredJobs.sort(
             (a, b) => b.similarityScore - a.similarityScore
@@ -146,4 +134,4 @@ function calculateCosineSimilarity(
     return magnitudeA && magnitudeB
         ? dotProduct / (magnitudeA * magnitudeB)
         : 0;
-}
+};
