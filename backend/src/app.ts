@@ -4,13 +4,21 @@ import errorMiddleware from './middlewares/error.middleware.ts';
 import cookieParser from 'cookie-parser';
 import { apiLimiter } from './utils/ratelimit.ts';
 import jobMatchRouter from './routes/job.match.routes.ts';
+import cors from 'cors';
+import config from './config/config.ts';
 
 
 const app = express();
 app.use(express.json());
-app.use(apiLimiter);
 app.use(cookieParser())
 app.use(express.urlencoded({ extended: true }));
+app.use(apiLimiter);
+
+app.use(cors({
+    origin: config.FRONTEND_URL,
+    credentials: true,
+}));
+
 
 app.get('/', (req: express.Request, res: express.Response) => { 
     return res.status(200).json({

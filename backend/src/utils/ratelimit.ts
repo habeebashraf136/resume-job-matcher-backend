@@ -9,6 +9,7 @@ export const apiLimiter = rateLimit({
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     store: new RedisStore({
+        prefix: 'rl:api:',
         sendCommand: (...args: [string, ...string[]]) => 
             redis.call(...args) as Promise<any>,
     }),
@@ -24,6 +25,7 @@ export const authLimiter = rateLimit({
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     store: new RedisStore({
+        prefix: 'rl:auth:',
         sendCommand: (...args: [string, ...string[]]) => 
             redis.call(...args) as Promise<any>,
     }),

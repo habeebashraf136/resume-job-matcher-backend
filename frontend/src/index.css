@@ -1,0 +1,120 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #F4F5F8;
+    --surface: #FFFFFF;
+    --ink: #111111;
+    --yellow: #FFF09A;
+    --cyan: #9EF2F5;
+    --pink: #F9A8F0;
+    --purple: #A5A6FF;
+    --danger: #FF6B6B;
+    --success: #7DE08D;
+    
+    --shadow-color: var(--ink);
+    
+    /* Legacy mappings if needed */
+    --background: var(--bg);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --primary: var(--cyan);
+    --accent: var(--pink);
+    --warning: var(--yellow);
+    --muted: var(--surface);
+    --border: var(--ink);
+  }
+
+  .dark {
+    --bg: #141824;
+    --surface: #1E2333;
+    --ink: #FFFFFF;
+    
+    --yellow: #FFE540;
+    --cyan: #38BDF8;
+    --pink: #FF66C4;
+    --purple: #818CF8;
+    --danger: #FF5555;
+    --success: #34D399;
+    
+    --shadow-color: #0B0E17;
+    
+    /* Legacy mappings */
+    --background: var(--bg);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --primary: var(--cyan);
+    --accent: var(--pink);
+    --warning: var(--yellow);
+    --muted: var(--surface);
+    --border: var(--ink);
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--ink);
+  }
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    @apply antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  ::selection {
+    background-color: var(--yellow);
+    color: #111111;
+  }
+  
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover, 
+  input:-webkit-autofill:focus, 
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #FFFFFF inset !important;
+    -webkit-text-fill-color: #111111 !important;
+    caret-color: #111111 !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+    color: var(--ink);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .neo-shadow {
+    box-shadow: 4px 4px 0 var(--shadow-color);
+  }
+  .neo-shadow-sm {
+    box-shadow: 3px 3px 0 var(--shadow-color);
+  }
+  .neo-shadow-lg {
+    box-shadow: 8px 8px 0 var(--shadow-color);
+  }
+  
+  .neo-border {
+    border: 2px solid var(--ink);
+  }
+  
+  .glass-panel {
+    background-color: var(--surface);
+    border: 2px solid var(--ink);
+    box-shadow: 4px 4px 0 var(--shadow-color);
+    border-radius: 0.375rem;
+  }
+}

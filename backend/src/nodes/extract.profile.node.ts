@@ -96,9 +96,15 @@ export const extractProfile = async (state: ExtractProfileState) => {
                 - Return ONLY valid JSON with exact camelCase field names
                 - Do not rename or add extra fields
                 - Always include every field in the JSON. Never omit a field.
-                - For required text fields missing from the resume, return an empty string
+                - For required text fields missing from the resume, return an empty string. The only exception is targetRole (see the rules below).
                 - For missing lists (skills, experience, education), return an empty array
                 - For optional fields that are not in the resume (preferredLocation, startDate, endDate, description, year), set the value to null
+
+                Rules for targetRole:
+                - targetRole must always be a real job title such as "Backend Developer" or "Frontend Developer".
+                - If the resume states a job objective or headline, use it.
+                - If it does not, infer the best-fitting job title from the skills, projects and experience.
+                - Never return an empty string, "General Application", "Fresher", "Student" or "Intern" on its own.
 
                 Rules for experience:
                 - Only count real work experience: jobs and internships. Do NOT count personal, academic, or side projects as experience, even if described with professional-sounding language.

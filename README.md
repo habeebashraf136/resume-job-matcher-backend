@@ -1,211 +1,131 @@
-# Resume Job Matcher — Backend
+# Resume Job Matcher
 
-An AI-powered backend that takes a raw resume, understands it, and returns the most relevant job listings — ranked by how well they match the candidate's skills and experience.
+An AI-powered full-stack application that takes a PDF resume, understands it, finds real job listings, and returns them ranked by how well they fit the candidate.
 
-Built as a portfolio project to practice **TypeScript**, **RAG pipelines**, and **LangGraph.js** multi-agent orchestration.
+Built as a portfolio project to practice **TypeScript**, **LangGraph.js** pipelines, **React** (with a Neo-Brutalism design system), **embeddings**, and **relational database design**.
+
+---
+
+## Table of Contents
+
+- [What It Does](#what-it-does)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Backend Pipeline](#backend-pipeline)
+- [Frontend Architecture](#frontend-architecture)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [Database Schema](#database-schema)
+- [Key Design Decisions](#key-design-decisions)
+- [Known Limitations](#known-limitations)
+- [Author](#author)
 
 ---
 
 ## What It Does
 
-1. User uploads a resume (PDF)
-2. The PDF is parsed into raw text
-3. An LLM (Groq) extracts skills, experience, and role preferences from the text
-4. The system searches real job listings via the **JSearch API (RapidAPI)**
-5. Each job is embedded and scored against the resume using **vector similarity**
-6. An OpenAI model (via OpenRouter) re-ranks the jobs for role, experience, and location fit
-7. The full search history is saved to **PostgreSQL** for future reference
-
----
-
-## AI Pipeline — LangGraph.js
-
-The core of this project is a **LangGraph pipeline** that processes the resume end to end:
-
-Upload Resume
-│
-▼
-┌─────────────┐
-│ Parse Node │ ── Extracts raw text from the uploaded PDF
-└─────────────┘
-│
-▼
-┌──────────────┐
-│ Extract Node │ ── Groq LLM extracts skills, experience (with dates), job title, location
-└──────────────┘
-│
-▼
-┌─────────────┐
-│ Search Node │ ── Queries JSearch API (RapidAPI) with the extracted profile
-└─────────────┘
-│
-▼
-┌───────────────────┐
-│ Embed + Score Node│ ── Embeds resume + job descriptions, computes cosine similarity
-└───────────────────┘
-│
-▼
-┌───────────┐
-│ Rank Node │ ── OpenAI model (via OpenRouter) re-scores jobs on role/experience/location fit
-└───────────┘
-│
-▼
-┌───────────┐
-│ Save Node │ ── Persists the search and ranked jobs to PostgreSQL
-└───────────┘
-│
-▼
-Response returned to user
-
+1. A logged-in user uploads a resume as a PDF via the React frontend.
+2. The backend converts the PDF to plain text.
+3. An LLM (Groq) pulls out the candidate's skills, work history, target role, and preferred location.
+4. The backend searches live job listings through the JSearch API (RapidAPI).
+5. The resume and every job are turned into embeddings (Mistral) and compared with cosine similarity.
+6. A second LLM (via OpenRouter) re-scores each job for role, experience, and location fit, and writes a short reason for each score.
+7. The search and its ranked jobs are saved to PostgreSQL, so the user can view their history later on the dashboard.
+8. The frontend displays the results with smooth animations and a premium Neo-Brutalist UI that supports both light and dark modes.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js + TypeScript |
-| Framework | Express.js |
-| AI Orchestration | LangGraph.js |
-| LLM (Extraction) | Groq |
-| LLM (Ranking) | OpenAI (via OpenRouter) |
-| Embeddings | Mistral |
-| Vector Database | Pinecone (resume embeddings) |
-| Job Search API | JSearch (RapidAPI) |
-| Database | PostgreSQL (Neon) |
-| Cache / Rate Limiting | Redis (ioredis) |
-| Auth | JWT (Access + Refresh tokens) |
-| File Upload | Multer |
-| PDF Parsing | PDF parser library |
-| Schema Validation | Zod |
-| Logging | Winston |
+### Frontend
+- **Framework**: React 19 + Vite
+- **Styling**: Tailwind CSS (custom Neo-Brutalist design system)
+- **State Management**: Zustand (global) + React Query (server state)
+- **Routing**: React Router v7
+- **Forms & Validation**: React Hook Form + Zod
+- **Animations & 3D**: Framer Motion + Three.js (@react-three/fiber)
+- **Icons**: Lucide React
+
+### Backend
+- **Runtime**: Node.js (ES modules) + TypeScript
+- **Framework**: Express 5
+- **Pipeline Orchestration**: LangGraph.js
+- **Extraction LLM**: Groq (`openai/gpt-oss-120b`)
+- **Ranking LLM**: OpenRouter (`google/gemma-4-26b-a4b-it`)
+- **Embeddings**: Mistral (`mistral-embed`)
+- **Vector Database**: Pinecone (index `resume-job-matcher`)
+- **Job Data**: JSearch API via RapidAPI
+- **Database**: PostgreSQL (Neon) with `pg` & `node-pg-migrate`
+- **Cache & Rate Limiting**: Redis (`ioredis`)
+- **Auth**: JWT access + refresh tokens, bcrypt
+- **File Upload & PDF Parsing**: Multer + `@cedrugs/pdf-parse`
 
 ---
 
 ## Project Structure
 
-src/
-├── app.ts # Express app setup and route registration
-├── server.ts # Server bootstrap, DB and Pinecone init
-├── config/ # DB, Pinecone, Redis, environment configs
-├── controllers/ # Auth and job match request handlers
-├── middlewares/ # Auth, error handling, file upload, rate limiting
-├── models/ # Postgres queries / data access for job searches and users
-├── routes/ # API route definitions
-├── services/ # External API integrations (JSearch, Pinecone, embeddings)
-├── nodes/ # LangGraph pipeline nodes (parse, extract, search, embed+score, rank, save)
-├── graph/ # LangGraph state and graph definition
-├── validators/ # Zod request validation schemas
-├── types/ # TypeScript type definitions
-└── utils/ # Shared utilities and logger
-
-
----
-
-## API Endpoints
-
-### Auth
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/auth/register` | Register a new user |
-| POST | `/api/auth/login` | Login and receive tokens |
-| GET | `/api/auth/get-refresh` | Refresh access token |
-| GET | `/api/auth/get-user` | Get current authenticated user |
-| POST | `/api/auth/logout` | Logout and invalidate refresh token |
-
-### Job Matching
-
-| Method | Endpoint | Description | Auth |
-|---|---|---|---|
-| POST | `/api/job-match/findJobs` | Upload resume and get ranked job matches | ✅ Required |
-| GET | `/api/job-match/history` | Get past job search results for the user, grouped by search | ✅ Required |
-
-#### POST `/api/job-match/findJobs`
-
-**Request:** `multipart/form-data`
-
-resume: <PDF file>
-
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "jobSearchId": "abc-123",
-  "rankedJobs": [
-    {
-      "jobId": "...",
-      "title": "Backend Developer Intern",
-      "company": "Acme Corp",
-      "location": "IN",
-      "score": 90,
-      "matchReason": "Strong fit for an entry-level candidate with Node.js skills.",
-      "url": "https://...",
-      "jobType": "full-time",
-      "salary": "40000-60000 INR",
-      "postedAt": "2026-09-20T10:00:00Z"
-    }
-  ]
-}
-```
-
-#### GET `/api/job-match/history`
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "message": "Job search history retrieved successfully",
-  "data": [
-    {
-      "jobSearchId": "abc-123",
-      "createdAt": "2026-09-28T10:30:56.993Z",
-      "targetRole": "Backend Developer",
-      "jobs": [
-        { "title": "...", "company": "...", "score": 90, "matchReason": "...", "url": "..." }
-      ]
-    }
-  ]
-}
+```text
+resume-job-matcher-backend/
+├── README.md
+├── backend/                       # Node.js Express Backend
+│   ├── migrations/                # SQL migrations (users, job_searches, ranked_jobs)
+│   └── src/
+│       ├── config/                # Env validation, Postgres pool, Redis, Pinecone
+│       ├── routes/                # API route definitions
+│       ├── controllers/           # Route logic (Auth, Job Match)
+│       ├── middlewares/           # JWT auth, Multer upload, error handling
+│       ├── graph/                 # LangGraph state + graph definition
+│       ├── nodes/                 # The six pipeline nodes for LangGraph
+│       ├── services/              # JSearch, embeddings, Pinecone, PDF parsing
+│       └── ...
+└── frontend/                      # React Vite Frontend
+    ├── src/
+    │   ├── components/            # Reusable UI components (Neo-Brutalist design)
+    │   ├── hooks/                 # Custom React hooks
+    │   ├── lib/                   # Utility functions, API client setup (Axios)
+    │   ├── pages/                 # Route components (Home, Login, Register, Dashboard, History)
+    │   ├── store/                 # Zustand store definitions
+    │   ├── types/                 # TypeScript interfaces
+    │   └── index.css              # Global styles & CSS variables for light/dark mode
+    ├── tailwind.config.js         # Tailwind configuration & custom colors
+    └── ...
 ```
 
 ---
 
-## Environment Variables
+## Backend Pipeline
 
-Copy `.env.example` to `.env` and fill in your values:
+The pipeline is a **LangGraph.js** graph with six nodes that run one after another.
 
-```env
-# Server
-PORT=3000
-NODE_ENV=development
-
-# PostgreSQL (Neon)
-DATABASE_URL=your_postgres_connection_string
-
-# Redis
-REDIS_HOST=your redis host
-REDIS_PORT=your redis port
-REDIS_PASSWORD=your redis password
-
-# Auth
-ACCESS_TOKEN_SECRET=your_access_secret
-REFRESH_TOKEN_SECRET=your_refresh_secret
-
-# AI / LLM
-GROQ_API_KEY=your groq api key
-OPENROUTER_API_KEY=your openrouter api key
-MISTRAL_API_KEY=your mistral api key
-
-# Vector DB
-PINECONE_API_KEY=your pinecone api key
-
-# Job Search
-RAPID_API_KEY_API=your rapidapi key
+```mermaid
+flowchart TD
+    A[Upload PDF] --> B[parseResume]
+    B --> C[extractProfile]
+    C --> D[searchJobs]
+    D --> E[embedAndScore]
+    E --> F[rankMatches]
+    F --> G[saveResults]
+    G --> H[Response]
 ```
+
+- **parseResume**: Extracts text from the uploaded PDF.
+- **extractProfile**: Groq model parses candidate skills, role, and calculates experience.
+- **searchJobs**: Queries JSearch API based on the extracted profile.
+- **embedAndScore**: Embeds profile and jobs with Mistral, then computes cosine similarity.
+- **rankMatches**: OpenRouter LLM re-scores each job based on multiple factors.
+- **saveResults**: Saves the complete search and ranking to PostgreSQL.
+
+---
+
+## Frontend Architecture
+
+The frontend is built with a **Neo-Brutalist** aesthetic, focusing on high contrast, stark borders, and bold typography.
+
+- **Theming**: Fully supports Light and Dark modes. The theme is managed via CSS variables in `index.css` and applied through a global context.
+- **UI Components**: Custom-built UI components (Buttons, Inputs, Cards) that adhere strictly to the Neo-Brutalism design system without relying on generic component libraries.
+- **Data Fetching**: `React Query` handles all API requests (auth, history, uploading resumes), providing caching, loading states, and error handling out of the box.
+- **Global State**: `Zustand` is used for lightweight global state management, such as storing user authentication status and theme preferences.
+- **3D Elements**: The landing page features an interactive 3D particle simulation built with `Three.js` and `@react-three/fiber` for a premium user experience.
 
 ---
 
@@ -213,84 +133,81 @@ RAPID_API_KEY_API=your rapidapi key
 
 ### Prerequisites
 
-- Node.js v22+
-- A PostgreSQL database (Neon free tier works)
-- Redis running locally or via Upstash
-- Pinecone account (free tier works)
-- Groq API key (free)
-- OpenRouter API key (free)
-- Mistral API key (free)
-- RapidAPI account subscribed to JSearch (free tier works)
+- **Node.js 22.18 or newer.**
+- **PostgreSQL**: A free Neon database works perfectly.
+- **Redis**: For rate limiting and refresh tokens.
+- **Pinecone**: Create an index named `resume-job-matcher`, dimension `1024`, metric `cosine`.
+- API keys for **Groq**, **OpenRouter**, **Mistral**, and **RapidAPI** (JSearch).
 
-### Installation
+### Setup Backend
 
 ```bash
-# Clone the repo
-git clone https://github.com/habeebashraf136/resume-job-matcher-backend.git
-cd resume-job-matcher-backend
-
-# Install dependencies
+cd backend
 npm install
-
-# Set up environment variables
 cp .env.example .env
-# Fill in your values in .env
+# Fill in your .env values
+mkdir uploads
 
-# Run the Postgres migration (creates job_searches / ranked_jobs tables)
-# see migrations/ for the SQL file
-```
+# Run migrations
+npx dotenv -e .env -- npx node-pg-migrate up --database-url-var DATABASE_URL
 
-### Development
-
-```bash
+# Start server
 npm run dev
 ```
 
-### Type checking
+### Setup Frontend
 
 ```bash
-npm run typecheck
+cd frontend
+npm install
+cp .env.example .env
+# Fill in your frontend .env (e.g., VITE_API_URL=http://localhost:4000/api)
+
+# Start dev server
+npm run dev
 ```
 
-### Production
+The app will be available at `http://localhost:5173`.
 
-```bash
-npm start
-```
+---
+
+## Environment Variables
+
+### Backend (`backend/.env`)
+Required variables: `PORT`, `NODE_ENV`, `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY`, `PINECONE_API_KEY`, `RAPID_API_KEY_API`.
+
+### Frontend (`frontend/.env`)
+Required variables: `VITE_API_URL` (usually `http://localhost:4000/api`).
+
+---
+
+## Database Schema
+
+Three main tables in PostgreSQL:
+- **`users`**: User accounts (username, email, hashed password).
+- **`job_searches`**: One row per resume upload (includes extracted JSON profile).
+- **`ranked_jobs`**: The resulting ranked jobs for a search, linked to `job_searches`.
 
 ---
 
 ## Key Design Decisions
 
-- **LangGraph for pipeline orchestration** — Each processing stage is a separate node with typed state, making it easy to debug, extend, or swap individual steps
-- **Postgres over MongoDB for search history** — `job_searches` and `ranked_jobs` are normalized relational tables, enforcing data integrity (foreign keys, score range checks) that a document-store array couldn't guarantee
-- **Pinecone for vector search** — Resume embeddings are stored for similarity comparison against job descriptions, producing a real match score instead of keyword overlap
-- **Two-stage scoring** — Embedding similarity gives a fast first-pass score; an LLM re-ranks on top of that for role, experience, and location fit that embeddings alone can't capture
-- **Redis for rate limiting and refresh token rotation** — Refresh tokens are stored in Redis and rotated on each use for security
-- **Groq for extraction speed** — Fast inference keeps resume parsing latency low
+- **LangGraph for Backend Pipeline**: Makes the complex AI workflow modular, testable, and robust.
+- **Neo-Brutalism UI**: Chosen to make the application visually distinct and memorable compared to standard clean corporate UIs.
+- **Custom CSS over Utility-Only**: While Tailwind is used extensively, complex layered shadows and specific Neo-Brutalist borders are managed via custom CSS classes (`index.css`) for consistency.
+- **Two-Stage Scoring**: Embedding similarity is used as a fast first pass. An LLM then adjusts scores based on role level and experience.
 
 ---
 
 ## Known Limitations
 
-- Pipeline latency is currently in the tens-of-seconds range per search (LLM extraction + job search + embeddings + LLM ranking run sequentially); background job processing is a planned improvement
-- Job embeddings are recomputed per search rather than cached, since current traffic doesn't justify the added complexity
-
----
-
-## Purpose
-
-This is a **portfolio and learning project** built to practice:
-
-- TypeScript in a real backend context
-- RAG (Retrieval Augmented Generation) pipeline design
-- LangGraph.js multi-agent orchestration
-- Vector embeddings and similarity search with Pinecone
-- Relational database design (Postgres) for an AI pipeline's output
+- **Sequential Pipeline**: The backend process is synchronous and can take up to 30-40 seconds.
+- **No Background Queue**: Resume processing happens in the HTTP request lifecycle.
+- **Limited Job Sources**: Currently relies only on the JSearch API, restricted to India (`in`).
 
 ---
 
 ## Author
 
-**Habeeb Ashraf**
+**Habeeb Ashraf**  
 GitHub: [@habeebashraf136](https://github.com/habeebashraf136)

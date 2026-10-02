@@ -1,4 +1,4 @@
-import { ChatOpenAI } from '@langchain/openai';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import config from '../config/config.ts';
 import { z } from 'zod';
 import { resumeProfileSchema } from './extract.profile.node.ts';
@@ -6,13 +6,17 @@ import logger from '../utils/logger.ts';
 
 type ResumeProfile = z.infer<typeof resumeProfileSchema>;
 
-const model = new ChatOpenAI({
-    apiKey: config.OPENROUTER_API_KEY,
-    modelName: 'google/gemma-4-26b-a4b-it',
-    configuration: {
-        baseURL: 'https://openrouter.ai/api/v1',
-    }
-});
+const makeModel = (name: string) =>
+    new ChatGoogleGenerativeAI({
+        apiKey: config.GEMINI_API_KEY,
+        model: name,
+        temperature: 0,
+        maxOutputTokens: 4000,
+        maxRetries: 2,
+    });
+
+// Tried in order. If the first is overloaded or fails, the next one is used.
+const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'].map(makeModel);
 
 const RankedJobSchema = z.object({
     rankedJobs: z.array(z.object({
@@ -21,6 +25,21 @@ const RankedJobSchema = z.object({
         matchReason: z.string()
     }))
 });
+
+const invokeWithFallback = async (messages: any[]) => {
+    let lastError: any;
+
+    for (const m of models) {
+        try {
+            return await m.withStructuredOutput(RankedJobSchema).invoke(messages);
+        } catch (err: any) {
+            lastError = err;
+            logger.warn(`rankMatchesNode: model failed, trying next. ${err.message}`);
+        }
+    }
+
+    throw lastError;
+};
 
 type ScoredJob = {
     jobId: string;
@@ -68,9 +87,7 @@ export const rankMatchesNode = async (state: RankMatchesState) => {
     }));
 
     try {
-        const structuredModel = model.withStructuredOutput(RankedJobSchema);
-
-        const result = await structuredModel.invoke([
+        const result = await invokeWithFallback([
             {
                 role: 'system',
                 content: `You are an expert career advisor scoring job matches for a candidate.

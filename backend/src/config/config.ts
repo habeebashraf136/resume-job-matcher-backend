@@ -75,6 +75,17 @@ if(!process.env.GROQ_API_KEY){
     process.exit(1);
 }
 
+if(!process.env.FRONTEND_URL){
+    const err = new Error('FRONTEND_URL is not defined in environment variables')
+    logger.error(err);
+    process.exit(1);
+}
+
+if(!process.env.GEMINI_API_KEY){
+    const err = new Error('GEMINI_API_KEY is not defined in environment variables')
+    logger.error(err);
+    process.exit(1);
+}
 
 
 const config = {
@@ -90,6 +101,8 @@ const config = {
     MISTRAL_API_KEY: process.env.MISTRAL_API_KEY,
     RAPID_API_KEY_API: process.env.RAPID_API_KEY_API,
     GROQ_API_KEY: process.env.GROQ_API_KEY,
+    FRONTEND_URL: process.env.FRONTEND_URL,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
 };
 
 export default config;
