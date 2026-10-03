@@ -45,12 +45,6 @@ if(!process.env.ACCESS_TOKEN_SECRET){
     process.exit(1);
 }
 
-if(!process.env.OPENROUTER_API_KEY){
-    const err = new Error('OPENROUTER_API_KEY is not defined in environment variables')
-    logger.error(err);
-    process.exit(1);
-}
-
 if(!process.env.PINECONE_API_KEY){
     const err = new Error('PINECONE_API_KEY is not defined in environment variables')
     logger.error(err);
@@ -96,7 +90,6 @@ const config = {
     NODE_ENV: process.env.NODE_ENV,
     ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET,
     REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET,
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     PINECONE_API_KEY: process.env.PINECONE_API_KEY,
     MISTRAL_API_KEY: process.env.MISTRAL_API_KEY,
     RAPID_API_KEY_API: process.env.RAPID_API_KEY_API,
