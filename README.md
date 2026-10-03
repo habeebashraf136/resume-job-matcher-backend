@@ -15,7 +15,10 @@ Built as a portfolio project to practice **TypeScript**, **LangGraph.js** pipeli
 - [Frontend Architecture](#frontend-architecture)
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
+- [Database Migrations](#database-migrations)
+- [Deploying to Render](#deploying-to-render)
 - [Database Schema](#database-schema)
+- [API Endpoints](#api-endpoints)
 - [Key Design Decisions](#key-design-decisions)
 - [Known Limitations](#known-limitations)
 - [Author](#author)
@@ -29,15 +32,16 @@ Built as a portfolio project to practice **TypeScript**, **LangGraph.js** pipeli
 3. An LLM (Groq) pulls out the candidate's skills, work history, target role, and preferred location.
 4. The backend searches live job listings through the JSearch API (RapidAPI).
 5. The resume and every job are turned into embeddings (Mistral) and compared with cosine similarity.
-6. A second LLM (via OpenRouter) re-scores each job for role, experience, and location fit, and writes a short reason for each score.
+6. A second LLM (Google Gemini) re-scores each job for role, experience, and location fit, and writes a short reason for each score.
 7. The search and its ranked jobs are saved to PostgreSQL, so the user can view their history later on the dashboard.
-8. The frontend displays the results with smooth animations and a premium Neo-Brutalist UI that supports both light and dark modes.
+8. The frontend displays the results with smooth animations and a Neo-Brutalist UI that supports both light and dark modes.
 
 ---
 
 ## Tech Stack
 
 ### Frontend
+
 - **Framework**: React 19 + Vite
 - **Styling**: Tailwind CSS (custom Neo-Brutalist design system)
 - **State Management**: Zustand (global) + React Query (server state)
@@ -47,15 +51,16 @@ Built as a portfolio project to practice **TypeScript**, **LangGraph.js** pipeli
 - **Icons**: Lucide React
 
 ### Backend
-- **Runtime**: Node.js (ES modules) + TypeScript
+
+- **Runtime**: Node.js 22.18+ (ES modules, runs TypeScript directly, no build step)
 - **Framework**: Express 5
 - **Pipeline Orchestration**: LangGraph.js
 - **Extraction LLM**: Groq (`openai/gpt-oss-120b`)
-- **Ranking LLM**: OpenRouter (`google/gemma-4-26b-a4b-it`)
-- **Embeddings**: Mistral (`mistral-embed`)
-- **Vector Database**: Pinecone (index `resume-job-matcher`)
+- **Ranking LLM**: Google Gemini (with a fallback model, see `rank.matches.node.ts`)
+- **Embeddings**: Mistral (`mistral-embed`, 1024 dimensions)
+- **Vector Database**: Pinecone (index `resume-job-matcher`). The resume vector is stored per user; job similarity is calculated in code.
 - **Job Data**: JSearch API via RapidAPI
-- **Database**: PostgreSQL (Neon) with `pg` & `node-pg-migrate`
+- **Database**: PostgreSQL (Neon) with `pg` and `node-pg-migrate`
 - **Cache & Rate Limiting**: Redis (`ioredis`)
 - **Auth**: JWT access + refresh tokens, bcrypt
 - **File Upload & PDF Parsing**: Multer + `@cedrugs/pdf-parse`
@@ -64,10 +69,10 @@ Built as a portfolio project to practice **TypeScript**, **LangGraph.js** pipeli
 
 ## Project Structure
 
-```text
+```
 resume-job-matcher-backend/
 ├── README.md
-├── backend/                       # Node.js Express Backend
+├── backend/                       # Node.js Express backend
 │   ├── migrations/                # SQL migrations (users, job_searches, ranked_jobs)
 │   └── src/
 │       ├── config/                # Env validation, Postgres pool, Redis, Pinecone
@@ -77,18 +82,17 @@ resume-job-matcher-backend/
 │       ├── graph/                 # LangGraph state + graph definition
 │       ├── nodes/                 # The six pipeline nodes for LangGraph
 │       ├── services/              # JSearch, embeddings, Pinecone, PDF parsing
-│       └── ...
-└── frontend/                      # React Vite Frontend
+│       ├── validators/            # Request validation (Zod)
+│       └── utils/                 # Logger, rate limiters, async handler
+└── frontend/                      # React Vite frontend
     ├── src/
-    │   ├── components/            # Reusable UI components (Neo-Brutalist design)
+    │   ├── api/                   # Axios client and API calls
+    │   ├── components/            # Reusable UI components
     │   ├── hooks/                 # Custom React hooks
-    │   ├── lib/                   # Utility functions, API client setup (Axios)
-    │   ├── pages/                 # Route components (Home, Login, Register, Dashboard, History)
-    │   ├── store/                 # Zustand store definitions
-    │   ├── types/                 # TypeScript interfaces
-    │   └── index.css              # Global styles & CSS variables for light/dark mode
-    ├── tailwind.config.js         # Tailwind configuration & custom colors
-    └── ...
+    │   ├── pages/                 # Home, Login, Register, Dashboard, History
+    │   ├── store/                 # Zustand stores
+    │   └── index.css              # Global styles and CSS variables (light/dark)
+    └── tailwind.config.js
 ```
 
 ---
@@ -108,24 +112,24 @@ flowchart TD
     G --> H[Response]
 ```
 
-- **parseResume**: Extracts text from the uploaded PDF.
-- **extractProfile**: Groq model parses candidate skills, role, and calculates experience.
-- **searchJobs**: Queries JSearch API based on the extracted profile.
-- **embedAndScore**: Embeds profile and jobs with Mistral, then computes cosine similarity.
-- **rankMatches**: OpenRouter LLM re-scores each job based on multiple factors.
-- **saveResults**: Saves the complete search and ranking to PostgreSQL.
+- **parseResume**: Extracts text from the uploaded PDF, then deletes the temp file.
+- **extractProfile**: Groq model reads skills, role and work history. Years of experience are calculated in code, not by the model.
+- **searchJobs**: Queries the JSearch API using the target role, top skills and preferred location.
+- **embedAndScore**: Embeds the profile and jobs with Mistral, then computes cosine similarity.
+- **rankMatches**: Gemini re-scores each job on role, experience, location and skills, and writes a reason.
+- **saveResults**: Saves the search and ranked jobs to PostgreSQL in one transaction.
 
 ---
 
 ## Frontend Architecture
 
-The frontend is built with a **Neo-Brutalist** aesthetic, focusing on high contrast, stark borders, and bold typography.
+The frontend uses a **Neo-Brutalist** style: high contrast, thick borders, bold type.
 
-- **Theming**: Fully supports Light and Dark modes. The theme is managed via CSS variables in `index.css` and applied through a global context.
-- **UI Components**: Custom-built UI components (Buttons, Inputs, Cards) that adhere strictly to the Neo-Brutalism design system without relying on generic component libraries.
-- **Data Fetching**: `React Query` handles all API requests (auth, history, uploading resumes), providing caching, loading states, and error handling out of the box.
-- **Global State**: `Zustand` is used for lightweight global state management, such as storing user authentication status and theme preferences.
-- **3D Elements**: The landing page features an interactive 3D particle simulation built with `Three.js` and `@react-three/fiber` for a premium user experience.
+- **Theming**: Light and dark modes, managed with CSS variables in `index.css`.
+- **UI Components**: Custom-built Buttons, Inputs and Cards. No generic component library.
+- **Data Fetching**: React Query handles API requests, caching and loading states.
+- **Global State**: Zustand stores the auth state and theme.
+- **3D Elements**: The landing page has an interactive particle scene built with Three.js and `@react-three/fiber`.
 
 ---
 
@@ -133,11 +137,11 @@ The frontend is built with a **Neo-Brutalist** aesthetic, focusing on high contr
 
 ### Prerequisites
 
-- **Node.js 22.18 or newer.**
-- **PostgreSQL**: A free Neon database works perfectly.
-- **Redis**: For rate limiting and refresh tokens.
+- **Node.js 22.18 or newer.** Older versions cannot run `.ts` files directly.
+- **PostgreSQL**: A free Neon database works well.
+- **Redis**: Used for rate limiting and refresh tokens.
 - **Pinecone**: Create an index named `resume-job-matcher`, dimension `1024`, metric `cosine`.
-- API keys for **Groq**, **OpenRouter**, **Mistral**, and **RapidAPI** (JSearch).
+- API keys for **Groq**, **Google Gemini**, **Mistral** and **RapidAPI** (JSearch).
 
 ### Setup Backend
 
@@ -146,14 +150,15 @@ cd backend
 npm install
 cp .env.example .env
 # Fill in your .env values
-mkdir uploads
 
-# Run migrations
-npx dotenv -e .env -- npx node-pg-migrate up --database-url-var DATABASE_URL
+# Create the database tables (see Database Migrations below)
+npx dotenv -e .env -- npm run migrate
 
-# Start server
+# Start the server
 npm run dev
 ```
+
+The uploads folder is created automatically. You do not need to create it.
 
 ### Setup Frontend
 
@@ -161,9 +166,8 @@ npm run dev
 cd frontend
 npm install
 cp .env.example .env
-# Fill in your frontend .env (e.g., VITE_API_URL=http://localhost:4000/api)
+# Fill in your frontend .env (see below)
 
-# Start dev server
 npm run dev
 ```
 
@@ -174,40 +178,135 @@ The app will be available at `http://localhost:5173`.
 ## Environment Variables
 
 ### Backend (`backend/.env`)
-Required variables: `PORT`, `NODE_ENV`, `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY`, `PINECONE_API_KEY`, `RAPID_API_KEY_API`.
+
+The server stops at startup if any of these are missing.
+
+| Variable | What it is |
+| --- | --- |
+| `PORT` | Server port. Render sets this for you. Defaults to 4000. |
+| `NODE_ENV` | `development` or `production` |
+| `FRONTEND_URL` | Exact frontend address for CORS, with no trailing slash. Example: `http://localhost:5173` |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_HOST` | Redis host |
+| `REDIS_PORT` | Redis port |
+| `REDIS_PASSWORD` | Redis password |
+| `ACCESS_TOKEN_SECRET` | Long random string for access tokens |
+| `REFRESH_TOKEN_SECRET` | A different long random string for refresh tokens |
+| `GROQ_API_KEY` | Groq API key (profile extraction) |
+| `GEMINI_API_KEY` | Google Gemini API key (ranking) |
+| `MISTRAL_API_KEY` | Mistral API key (embeddings) |
+| `PINECONE_API_KEY` | Pinecone API key |
+| `RAPID_API_KEY_API` | RapidAPI key for JSearch |
 
 ### Frontend (`frontend/.env`)
-Required variables: `VITE_API_URL` (usually `http://localhost:4000/api`).
+
+```
+VITE_BACKEND_URL=http://localhost:3000
+VITE_API_URL=http://localhost:3000
+```
+
+- Set both to the same backend address.
+- Do not add `/api` at the end and do not add a trailing slash.
+- Use your `PORT` value. The server defaults to 4000 if `PORT` is not set.
+
+---
+
+## Database Migrations
+
+Migrations are SQL files in `backend/migrations/`, run by `node-pg-migrate`.
+
+From the `backend` folder:
+
+```bash
+# Using your .env file
+npx dotenv -e .env -- npm run migrate
+
+# Or set the variable yourself
+# Mac/Linux
+DATABASE_URL="postgres://user:pass@host/db" npm run migrate
+
+# Windows PowerShell
+$env:DATABASE_URL="postgres://user:pass@host/db"; npm run migrate
+```
+
+- Run it once per database. Running it again is safe. It skips migrations that already ran.
+- Test on a throwaway database first, then run it against production.
+- To undo the last migration: `npx node-pg-migrate down`
+
+---
+
+## Deploying to Render
+
+Deploy the backend as a **Web Service**. Deploy the frontend separately (a Render Static Site or Vercel).
+
+1. Create the production database and run the migrations against it (see above).
+2. In Render, create a new Web Service from this repository and use these settings:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `backend` |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+
+3. Add environment variables:
+   - Every backend variable from the table above.
+   - `NODE_ENV=production`
+   - `NODE_VERSION=22.22.0`
+   - `FRONTEND_URL` set to your deployed frontend address.
+4. Deploy the frontend and set `VITE_BACKEND_URL` and `VITE_API_URL` to your Render service address.
+5. Check that `https://your-service.onrender.com/` returns `{"message":"server is running"}`.
+
+Notes:
+- The free Render plan sleeps after about 15 minutes of no traffic. The first request afterwards is slow.
+- The refresh cookie uses `SameSite=None; Secure` in production. Some browsers block it when the frontend and backend are on different domains. A custom domain for both avoids this.
+- If your Redis provider requires TLS (Upstash, Redis Cloud), the Redis config needs `tls: {}`.
 
 ---
 
 ## Database Schema
 
 Three main tables in PostgreSQL:
+
 - **`users`**: User accounts (username, email, hashed password).
-- **`job_searches`**: One row per resume upload (includes extracted JSON profile).
-- **`ranked_jobs`**: The resulting ranked jobs for a search, linked to `job_searches`.
+- **`job_searches`**: One row per resume upload, including the extracted JSON profile.
+- **`ranked_jobs`**: The ranked jobs for each search, linked to `job_searches`.
+
+---
+
+## API Endpoints
+
+| Method | Path | Auth | What it does |
+| --- | --- | --- | --- |
+| POST | `/api/auth/register` | No | Create an account |
+| POST | `/api/auth/login` | No | Log in |
+| GET | `/api/auth/get-refresh` | Cookie | Get a new access token |
+| GET | `/api/auth/get-user` | Yes | Get the current user |
+| POST | `/api/auth/logout` | Yes | Log out |
+| POST | `/api/job-match/findJobs` | Yes | Upload a PDF (field name `resume`) and get ranked jobs |
+| GET | `/api/job-match/history` | Yes | Get past searches |
 
 ---
 
 ## Key Design Decisions
 
-- **LangGraph for Backend Pipeline**: Makes the complex AI workflow modular, testable, and robust.
-- **Neo-Brutalism UI**: Chosen to make the application visually distinct and memorable compared to standard clean corporate UIs.
-- **Custom CSS over Utility-Only**: While Tailwind is used extensively, complex layered shadows and specific Neo-Brutalist borders are managed via custom CSS classes (`index.css`) for consistency.
-- **Two-Stage Scoring**: Embedding similarity is used as a fast first pass. An LLM then adjusts scores based on role level and experience.
+- **LangGraph for the pipeline**: Keeps each step separate and easy to test.
+- **Two-stage scoring**: Embedding similarity is a fast first pass. An LLM then adjusts scores for role level and experience.
+- **Years of experience calculated in code**: The LLM only extracts dates. This avoids made-up numbers.
+- **Redis-backed rate limits and token store**: Limits work across restarts, and logout can block a token before it expires.
+- **Neo-Brutalism UI**: Chosen to look different from standard corporate designs.
 
 ---
 
 ## Known Limitations
 
-- **Sequential Pipeline**: The backend process is synchronous and can take up to 30-40 seconds.
-- **No Background Queue**: Resume processing happens in the HTTP request lifecycle.
-- **Limited Job Sources**: Currently relies only on the JSearch API, restricted to India (`in`).
+- **Slow, single-request pipeline**: A search can take 30-40 seconds and runs inside one HTTP request. There is no background queue.
+- **Limited job source**: Only the JSearch API is used, restricted to India (`in`).
+- **Embedding rate limits**: Jobs are embedded in parallel. On a free Mistral plan, some may fail and be skipped.
+- **One refresh token per user**: Logging in on a second device logs out the first.
 
 ---
 
 ## Author
 
-**Habeeb Ashraf**  
+**Habeeb Ashraf**
 GitHub: [@habeebashraf136](https://github.com/habeebashraf136)

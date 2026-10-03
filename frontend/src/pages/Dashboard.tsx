@@ -54,7 +54,7 @@ export default function Dashboard() {
       const currentToken = useAuthStore.getState().accessToken;
       
       const response = await axios.post(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/job-match/findJobs`,
+        `${import.meta.env.VITE_BACKEND_URL}/api/job-match/findJobs`,
         formData,
         {
           headers: {
